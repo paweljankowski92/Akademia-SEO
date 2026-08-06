@@ -1,0 +1,33 @@
+# Zależności
+node_modules/
+
+# Build
+dist/
+dist-ssr/
+
+# Logi
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Claude Code (ustawienia lokalne)
+.claude/settings.local.json
+
+# Środowiskowe
+.env
+.env.local
+.env.*.local
+
+# Edytory / systemowe
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
