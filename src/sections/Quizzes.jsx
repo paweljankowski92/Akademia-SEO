@@ -1,22 +1,30 @@
-import { useState, useEffect } from 'react'
-import { useLocalStorage, uid } from '../lib/storage'
-import { seedQuizzes } from '../lib/seed'
-import { Modal, Field, EmptyState, LockedBanner, LockOverlay } from '../components/ui'
+import { useState } from 'react'
+import { useCollection, insertRow, updateRow, deleteRow } from '../lib/db'
+import { useAuth } from '../lib/auth'
+import { useProgress } from '../lib/progress'
+import { Modal, Field, EmptyState, LockedBanner, LockOverlay, Loading } from '../components/ui'
 
-export default function Quizzes({ onCount, isLoggedIn = false, onRequestLogin }) {
-  const [quizzes, setQuizzes] = useLocalStorage('sa_quizzes', seedQuizzes)
+function newQuestion() {
+  return { id: crypto.randomUUID(), text: '', options: ['', ''], correct: 0 }
+}
+function blankQuiz() {
+  return { title: '', description: '', questions: [newQuestion()] }
+}
+
+export default function Quizzes({ onRequestLogin }) {
+  const { isLoggedIn, isAdmin, user } = useAuth()
+  const { resultFor } = useProgress()
+  const { rows, loading, error, reload } = useCollection('quizzes')
   const [editing, setEditing] = useState(null)
   const [playing, setPlaying] = useState(null)
 
-  useEffect(() => { onCount?.(quizzes.length) }, [quizzes.length, onCount])
-
-  // Bez logowania dostępny jest tylko pierwszy quiz.
-  const freeId = quizzes[0]?.id
+  const freeId = rows[0]?.id
   const isLocked = (quiz) => !isLoggedIn && quiz.id !== freeId
 
-  function handleDelete(quiz) {
+  async function handleDelete(quiz) {
     if (!confirm(`Usunąć quiz „${quiz.title}”?`)) return
-    setQuizzes((prev) => prev.filter((q) => q.id !== quiz.id))
+    await deleteRow('quizzes', quiz.id)
+    reload()
   }
 
   return (
@@ -26,45 +34,50 @@ export default function Quizzes({ onCount, isLoggedIn = false, onRequestLogin })
           <h1 className="page-title">🧠 Quizy</h1>
           <p className="page-desc">Sprawdzaj wiedzę — twórz własne testy i rozwiązuj je.</p>
         </div>
-        {isLoggedIn && (
-          <button className="btn btn-primary" onClick={() => setEditing(newQuiz())}>+ Nowy quiz</button>
-        )}
+        {isAdmin && <button className="btn btn-primary" onClick={() => setEditing(blankQuiz())}>+ Nowy quiz</button>}
       </div>
 
-      {!isLoggedIn && quizzes.length > 0 && (
+      {!isLoggedIn && rows.length > 0 && (
         <LockedBanner onRequestLogin={onRequestLogin} message="Bez logowania dostępny jest tylko pierwszy quiz." />
       )}
 
-      {quizzes.length === 0 ? (
-        <EmptyState emoji="🧩" title="Brak quizów" text="Stwórz pierwszy test wiedzy."
-          action={isLoggedIn && <button className="btn btn-primary" onClick={() => setEditing(newQuiz())}>+ Nowy quiz</button>} />
+      {loading ? <Loading /> : error ? (
+        <div className="alert alert-error">⚠️ {error}</div>
+      ) : rows.length === 0 ? (
+        <EmptyState emoji="🧩" title="Brak quizów" text={isAdmin ? 'Stwórz pierwszy test wiedzy.' : 'Nic tu jeszcze nie ma.'}
+          action={isAdmin && <button className="btn btn-primary" onClick={() => setEditing(blankQuiz())}>+ Nowy quiz</button>} />
       ) : (
         <div className="grid">
-          {quizzes.map((quiz) => {
+          {rows.map((quiz) => {
             const locked = isLocked(quiz)
+            const result = isLoggedIn ? resultFor('quiz', quiz.id) : null
+            const questions = quiz.questions || []
             return (
               <div className={`card ${locked ? 'locked' : ''}`} key={quiz.id}>
                 <div className="card-top">
                   <h3 className="card-title">{quiz.title}</h3>
                   {locked ? (
                     <span className="lock-badge" title="Dostępne po zalogowaniu">🔒</span>
-                  ) : (
-                    isLoggedIn && (
-                      <div className="card-actions">
-                        <button className="btn-ghost btn-sm" onClick={() => setEditing(quiz)} title="Edytuj">✏️</button>
-                        <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(quiz)} title="Usuń">🗑️</button>
-                      </div>
-                    )
-                  )}
+                  ) : isAdmin ? (
+                    <div className="card-actions">
+                      <button className="btn-ghost btn-sm" onClick={() => setEditing(quiz)} title="Edytuj">✏️</button>
+                      <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(quiz)} title="Usuń">🗑️</button>
+                    </div>
+                  ) : null}
                 </div>
                 {quiz.description && <p className={`card-body ${locked ? 'locked-blur' : ''}`}>{quiz.description}</p>}
                 <div className="card-footer">
-                  <span className="tag gray">{quiz.questions.length} pyt.</span>
+                  <span className="tag gray">{questions.length} pyt.</span>
+                  {result && (
+                    <span className="tag" title="Twój ostatni wynik">
+                      🏅 {Math.round((result.score / result.max_score) * 100)}%
+                    </span>
+                  )}
                   {locked ? (
                     <LockOverlay onRequestLogin={onRequestLogin} />
                   ) : (
                     <button className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }}
-                      onClick={() => setPlaying(quiz)} disabled={quiz.questions.length === 0}>
+                      onClick={() => setPlaying(quiz)} disabled={questions.length === 0}>
                       ▶ Rozwiąż
                     </button>
                   )}
@@ -76,75 +89,58 @@ export default function Quizzes({ onCount, isLoggedIn = false, onRequestLogin })
       )}
 
       {editing && (
-        <QuizForm
-          initial={editing}
+        <QuizForm initial={editing} userId={user?.id}
           onClose={() => setEditing(null)}
-          onSave={(data) => {
-            setQuizzes((prev) => {
-              const exists = prev.some((q) => q.id === data.id)
-              return exists ? prev.map((q) => (q.id === data.id ? data : q)) : [data, ...prev]
-            })
-            setEditing(null)
-          }}
-        />
+          onSaved={() => { setEditing(null); reload() }} />
       )}
 
-      {playing && <QuizPlayer quiz={playing} onClose={() => setPlaying(null)} />}
+      {playing && <QuizPlayer quiz={playing} canSave={isLoggedIn} onClose={() => setPlaying(null)} />}
     </div>
   )
 }
 
-function newQuiz() {
-  return {
-    id: uid(),
-    title: '',
-    description: '',
-    createdAt: new Date().toISOString(),
-    questions: [newQuestion()],
-    _isNew: true,
-  }
-}
-function newQuestion() {
-  return { id: uid(), text: '', options: ['', ''], correct: 0 }
-}
-
-/* ---------------- Tworzenie / edycja ---------------- */
-function QuizForm({ initial, onSave, onClose }) {
+/* ---------------- Tworzenie / edycja (admin) ---------------- */
+function QuizForm({ initial, userId, onSaved, onClose }) {
   const [quiz, setQuiz] = useState(() => ({
     ...initial,
-    questions: initial.questions.length ? initial.questions : [newQuestion()],
+    questions: initial.questions?.length ? initial.questions : [newQuestion()],
   }))
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
 
   const setQuestion = (qid, patch) =>
     setQuiz((q) => ({ ...q, questions: q.questions.map((qq) => (qq.id === qid ? { ...qq, ...patch } : qq)) }))
 
-  function submit() {
-    if (!quiz.title.trim()) return alert('Podaj tytuł quizu.')
+  async function submit() {
+    if (!quiz.title.trim()) { setErr('Podaj tytuł quizu.'); return }
     const clean = quiz.questions
       .map((q) => ({ ...q, options: q.options.map((o) => o.trim()).filter(Boolean) }))
       .filter((q) => q.text.trim() && q.options.length >= 2)
       .map((q) => ({ ...q, correct: Math.min(q.correct, q.options.length - 1) }))
-    if (clean.length === 0) return alert('Dodaj przynajmniej jedno pytanie z 2 odpowiedziami.')
-    const { _isNew, ...rest } = quiz
-    onSave({ ...rest, questions: clean })
+    if (clean.length === 0) { setErr('Dodaj przynajmniej jedno pytanie z 2 odpowiedziami.'); return }
+
+    setBusy(true); setErr('')
+    try {
+      const payload = { title: quiz.title.trim(), description: quiz.description || null, questions: clean }
+      if (quiz.id) await updateRow('quizzes', quiz.id, payload)
+      else await insertRow('quizzes', { ...payload, created_by: userId ?? null })
+      onSaved()
+    } catch (e) {
+      setErr('Błąd zapisu: ' + e.message); setBusy(false)
+    }
   }
 
   return (
-    <Modal
-      title={initial._isNew ? 'Nowy quiz' : 'Edytuj quiz'}
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn" onClick={onClose}>Anuluj</button>
-          <button className="btn btn-primary" onClick={submit}>Zapisz quiz</button>
-        </>
-      }
-    >
+    <Modal title={initial.id ? 'Edytuj quiz' : 'Nowy quiz'} onClose={onClose}
+      footer={<>
+        <button className="btn" onClick={onClose}>Anuluj</button>
+        <button className="btn btn-primary" onClick={submit} disabled={busy}>{busy ? 'Zapisywanie…' : 'Zapisz quiz'}</button>
+      </>}>
       <Field label="Tytuł quizu">
         <input className="input" value={quiz.title} autoFocus onChange={(e) => setQuiz((q) => ({ ...q, title: e.target.value }))} />
       </Field>
       <Field label="Opis (opcjonalnie)">
-        <input className="input" value={quiz.description} onChange={(e) => setQuiz((q) => ({ ...q, description: e.target.value }))} />
+        <input className="input" value={quiz.description || ''} onChange={(e) => setQuiz((q) => ({ ...q, description: e.target.value }))} />
       </Field>
 
       {quiz.questions.map((q, qi) => (
@@ -187,50 +183,52 @@ function QuizForm({ initial, onSave, onClose }) {
       <button className="btn" onClick={() => setQuiz((q) => ({ ...q, questions: [...q.questions, newQuestion()] }))}>
         + Dodaj pytanie
       </button>
+      {err && <div className="alert alert-error">⚠️ {err}</div>}
     </Modal>
   )
 }
 
 /* ---------------- Rozwiązywanie ---------------- */
-function QuizPlayer({ quiz, onClose }) {
+function QuizPlayer({ quiz, canSave, onClose }) {
+  const { saveQuizResult } = useProgress()
   const [answers, setAnswers] = useState({})
   const [submitted, setSubmitted] = useState(false)
+  const questions = quiz.questions || []
 
-  const score = quiz.questions.reduce((acc, q) => acc + (answers[q.id] === q.correct ? 1 : 0), 0)
-  const total = quiz.questions.length
+  const score = questions.reduce((acc, q) => acc + (answers[q.id] === q.correct ? 1 : 0), 0)
+  const total = questions.length
   const pct = Math.round((score / total) * 100)
 
+  async function finish() {
+    setSubmitted(true)
+    if (canSave) await saveQuizResult(quiz.id, score, total)
+  }
+
   return (
-    <Modal
-      title={quiz.title}
-      onClose={onClose}
-      footer={
-        submitted ? (
-          <>
-            <button className="btn" onClick={() => { setAnswers({}); setSubmitted(false) }}>↻ Spróbuj ponownie</button>
-            <button className="btn btn-primary" onClick={onClose}>Zamknij</button>
-          </>
-        ) : (
-          <>
-            <button className="btn" onClick={onClose}>Anuluj</button>
-            <button className="btn btn-primary"
-              onClick={() => setSubmitted(true)}
-              disabled={Object.keys(answers).length < total}>
-              Sprawdź wynik
-            </button>
-          </>
-        )
-      }
-    >
+    <Modal title={quiz.title} onClose={onClose}
+      footer={submitted ? (
+        <>
+          <button className="btn" onClick={() => { setAnswers({}); setSubmitted(false) }}>↻ Spróbuj ponownie</button>
+          <button className="btn btn-primary" onClick={onClose}>Zamknij</button>
+        </>
+      ) : (
+        <>
+          <button className="btn" onClick={onClose}>Anuluj</button>
+          <button className="btn btn-primary" onClick={finish} disabled={Object.keys(answers).length < total}>
+            Sprawdź wynik
+          </button>
+        </>
+      )}>
       {submitted && (
         <div className="quiz-result">
           <div className="quiz-score" style={{ color: pct >= 60 ? 'var(--success)' : 'var(--danger)' }}>{pct}%</div>
           <p>Poprawne odpowiedzi: <b>{score} / {total}</b></p>
           <p className="meta">{pct >= 80 ? '🏆 Świetnie!' : pct >= 60 ? '👍 Nieźle!' : '📖 Warto powtórzyć materiał.'}</p>
+          {canSave && <p className="meta">✓ Wynik zapisany w Twoich postępach.</p>}
         </div>
       )}
 
-      {quiz.questions.map((q, qi) => (
+      {questions.map((q, qi) => (
         <div className="quiz-q" key={q.id}>
           <p style={{ fontWeight: 700, margin: '0 0 12px' }}>{qi + 1}. {q.text}</p>
           {q.options.map((opt, oi) => {
@@ -244,8 +242,7 @@ function QuizPlayer({ quiz, onClose }) {
                 <input type="radio" name={`play-${q.id}`} disabled={submitted}
                   checked={answers[q.id] === oi}
                   onChange={() => setAnswers((a) => ({ ...a, [q.id]: oi }))} />
-                {opt}
-                {submitted && oi === q.correct && ' ✓'}
+                {opt}{submitted && oi === q.correct && ' ✓'}
               </label>
             )
           })}

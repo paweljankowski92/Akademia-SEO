@@ -1,29 +1,27 @@
-import { useState, useEffect } from 'react'
-import { useLocalStorage, uid } from '../lib/storage'
-import { seedTips } from '../lib/seed'
-import { Modal, Field, EmptyState, formatDate, LockedBanner, LockOverlay } from '../components/ui'
+import { useState } from 'react'
+import { useCollection, insertRow, updateRow, deleteRow } from '../lib/db'
+import { useAuth } from '../lib/auth'
+import { Modal, Field, EmptyState, formatDate, LockedBanner, LockOverlay, Loading } from '../components/ui'
 
 const META = {
   porada: { label: 'Porada', emoji: '💡' },
   ciekawostka: { label: 'Ciekawostka', emoji: '✨' },
 }
 
-export default function Tips({ onCount, isLoggedIn = false, onRequestLogin }) {
-  const [items, setItems] = useLocalStorage('sa_tips', seedTips)
+export default function Tips({ onRequestLogin }) {
+  const { isLoggedIn, isAdmin, user } = useAuth()
+  const { rows, loading, error, reload } = useCollection('tips')
   const [editing, setEditing] = useState(null)
   const [filter, setFilter] = useState('all')
 
-  useEffect(() => { onCount?.(items.length) }, [items.length, onCount])
-
-  // Bez logowania dostępny jest tylko pierwszy wpis z pełnej listy.
-  const freeId = items[0]?.id
+  const freeId = rows[0]?.id
   const isLocked = (item) => !isLoggedIn && item.id !== freeId
+  const shown = rows.filter((i) => filter === 'all' || i.type === filter)
 
-  const shown = items.filter((i) => filter === 'all' || i.type === filter)
-
-  function handleDelete(item) {
+  async function handleDelete(item) {
     if (!confirm('Usunąć ten wpis?')) return
-    setItems((prev) => prev.filter((i) => i.id !== item.id))
+    await deleteRow('tips', item.id)
+    reload()
   }
 
   return (
@@ -33,12 +31,10 @@ export default function Tips({ onCount, isLoggedIn = false, onRequestLogin }) {
           <h1 className="page-title">💡 Porady i ciekawostki</h1>
           <p className="page-desc">Krótkie tipy SEO i ciekawostki, które warto mieć pod ręką.</p>
         </div>
-        {isLoggedIn && (
-          <button className="btn btn-primary" onClick={() => setEditing({ type: 'porada', text: '' })}>+ Dodaj wpis</button>
-        )}
+        {isAdmin && <button className="btn btn-primary" onClick={() => setEditing({ type: 'porada', text: '' })}>+ Dodaj wpis</button>}
       </div>
 
-      {!isLoggedIn && items.length > 0 && (
+      {!isLoggedIn && rows.length > 0 && (
         <LockedBanner onRequestLogin={onRequestLogin} message="Bez logowania dostępny jest tylko pierwszy wpis." />
       )}
 
@@ -50,9 +46,11 @@ export default function Tips({ onCount, isLoggedIn = false, onRequestLogin }) {
         ))}
       </div>
 
-      {shown.length === 0 ? (
-        <EmptyState emoji="💭" title="Brak wpisów" text="Dodaj pierwszą poradę lub ciekawostkę."
-          action={isLoggedIn && <button className="btn btn-primary" onClick={() => setEditing({ type: 'porada', text: '' })}>+ Dodaj wpis</button>} />
+      {loading ? <Loading /> : error ? (
+        <div className="alert alert-error">⚠️ {error}</div>
+      ) : shown.length === 0 ? (
+        <EmptyState emoji="💭" title="Brak wpisów" text={isAdmin ? 'Dodaj pierwszą poradę lub ciekawostkę.' : 'Nic tu jeszcze nie ma.'}
+          action={isAdmin && <button className="btn btn-primary" onClick={() => setEditing({ type: 'porada', text: '' })}>+ Dodaj wpis</button>} />
       ) : (
         <div className="grid">
           {shown.map((item) => {
@@ -63,20 +61,18 @@ export default function Tips({ onCount, isLoggedIn = false, onRequestLogin }) {
                   <span className="tag">{META[item.type]?.emoji} {META[item.type]?.label}</span>
                   {locked ? (
                     <span className="lock-badge" title="Dostępne po zalogowaniu">🔒</span>
-                  ) : (
-                    isLoggedIn && (
-                      <div className="card-actions">
-                        <button className="btn-ghost btn-sm" onClick={() => setEditing(item)} title="Edytuj">✏️</button>
-                        <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(item)} title="Usuń">🗑️</button>
-                      </div>
-                    )
-                  )}
+                  ) : isAdmin ? (
+                    <div className="card-actions">
+                      <button className="btn-ghost btn-sm" onClick={() => setEditing(item)} title="Edytuj">✏️</button>
+                      <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(item)} title="Usuń">🗑️</button>
+                    </div>
+                  ) : null}
                 </div>
                 <p className={`card-body ${locked ? 'locked-blur' : ''}`} style={{ color: 'var(--text)', fontSize: 15 }}>{item.text}</p>
                 {locked ? (
                   <div className="card-footer"><LockOverlay onRequestLogin={onRequestLogin} /></div>
                 ) : (
-                  <span className="meta">{formatDate(item.createdAt)}</span>
+                  <span className="meta">{formatDate(item.created_at)}</span>
                 )}
               </div>
             )
@@ -85,33 +81,35 @@ export default function Tips({ onCount, isLoggedIn = false, onRequestLogin }) {
       )}
 
       {editing && (
-        <TipForm
-          initial={editing}
+        <TipForm initial={editing} userId={user?.id}
           onClose={() => setEditing(null)}
-          onSave={(data) => {
-            setItems((prev) => {
-              const exists = prev.some((i) => i.id === data.id)
-              return exists ? prev.map((i) => (i.id === data.id ? data : i)) : [data, ...prev]
-            })
-            setEditing(null)
-          }}
-        />
+          onSaved={() => { setEditing(null); reload() }} />
       )}
     </div>
   )
 }
 
-function TipForm({ initial, onSave, onClose }) {
+function TipForm({ initial, userId, onSaved, onClose }) {
   const [form, setForm] = useState({ ...initial })
-  function submit() {
-    if (!form.text.trim()) return alert('Wpisz treść.')
-    onSave({ ...form, id: form.id || uid(), createdAt: form.createdAt || new Date().toISOString() })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function submit() {
+    if (!form.text.trim()) { setErr('Wpisz treść.'); return }
+    setBusy(true); setErr('')
+    try {
+      const payload = { type: form.type, text: form.text.trim() }
+      if (form.id) await updateRow('tips', form.id, payload)
+      else await insertRow('tips', { ...payload, created_by: userId ?? null })
+      onSaved()
+    } catch (e) { setErr('Błąd zapisu: ' + e.message); setBusy(false) }
   }
+
   return (
     <Modal title={initial.id ? 'Edytuj wpis' : 'Nowy wpis'} onClose={onClose}
       footer={<>
         <button className="btn" onClick={onClose}>Anuluj</button>
-        <button className="btn btn-primary" onClick={submit}>Zapisz</button>
+        <button className="btn btn-primary" onClick={submit} disabled={busy}>{busy ? 'Zapisywanie…' : 'Zapisz'}</button>
       </>}>
       <Field label="Typ">
         <select className="select" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>
@@ -122,6 +120,7 @@ function TipForm({ initial, onSave, onClose }) {
       <Field label="Treść">
         <textarea className="textarea" autoFocus value={form.text} onChange={(e) => setForm((f) => ({ ...f, text: e.target.value }))} />
       </Field>
+      {err && <div className="alert alert-error">⚠️ {err}</div>}
     </Modal>
   )
 }

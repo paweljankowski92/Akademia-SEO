@@ -42,6 +42,15 @@ export function EmptyState({ emoji, title, text, action }) {
   )
 }
 
+export function Loading({ text = 'Wczytywanie…' }) {
+  return (
+    <div className="loading">
+      <div className="spinner" />
+      <span>{text}</span>
+    </div>
+  )
+}
+
 export function LockedBanner({ onRequestLogin, message = 'Bez logowania dostępny jest tylko pierwszy element.' }) {
   return (
     <div className="alert alert-info" style={{ marginBottom: 18 }}>

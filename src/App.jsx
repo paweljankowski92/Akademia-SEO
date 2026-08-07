@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
+import Dashboard from './sections/Dashboard'
 import Materials from './sections/Materials'
 import Quizzes from './sections/Quizzes'
 import Tips from './sections/Tips'
@@ -7,6 +8,7 @@ import AuthPanel from './components/AuthPanel'
 import { useAuth } from './lib/auth'
 
 const NAV = [
+  { key: 'panel', label: 'Panel', icon: '🏠' },
   { key: 'materials', label: 'Materiały', icon: '📚' },
   { key: 'quizzes', label: 'Quizy', icon: '🧠' },
   { key: 'tips', label: 'Porady', icon: '💡' },
@@ -14,20 +16,11 @@ const NAV = [
 ]
 
 export default function App() {
-  const [active, setActive] = useState('materials')
-  const [counts, setCounts] = useState({})
+  const [active, setActive] = useState('panel')
   const [showAuth, setShowAuth] = useState(false)
-  const { user, loading, configured, signOut } = useAuth()
+  const { user, profile, isAdmin, loading, configured, signOut } = useAuth()
 
-  const setCount = useCallback((key, n) => {
-    setCounts((c) => (c[key] === n ? c : { ...c, [key]: n }))
-  }, [])
-
-  // Stabilne callbacki per sekcja (bez łamania zasad hooków).
-  const onMaterials = useCallback((n) => setCount('materials', n), [setCount])
-  const onQuizzes = useCallback((n) => setCount('quizzes', n), [setCount])
-  const onTips = useCallback((n) => setCount('tips', n), [setCount])
-  const onNews = useCallback((n) => setCount('news', n), [setCount])
+  const requestLogin = () => setShowAuth(true)
 
   return (
     <div className="app">
@@ -48,7 +41,6 @@ export default function App() {
           >
             <span className="icon">{item.icon}</span>
             {item.label}
-            {counts[item.key] > 0 && <span className="count">{counts[item.key]}</span>}
           </button>
         ))}
 
@@ -56,41 +48,34 @@ export default function App() {
           {!loading && (
             user ? (
               <div className="user-box">
-                <div className="user-avatar">{(user.email || '?')[0].toUpperCase()}</div>
+                <div className="user-avatar">{(profile?.email || user.email || '?')[0].toUpperCase()}</div>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div className="user-email" title={user.email}>{user.email}</div>
-                  <div className="user-role">Zalogowany</div>
+                  <div className="user-email" title={profile?.email || user.email}>{profile?.email || user.email}</div>
+                  <div className="user-role">{isAdmin ? '🛠️ Administrator' : '🎓 Kursant'}</div>
                 </div>
                 <button className="btn-ghost btn-sm" title="Wyloguj" onClick={() => signOut()}>⏻</button>
               </div>
             ) : (
               <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}
-                onClick={() => setShowAuth(true)} disabled={!configured}>
+                onClick={requestLogin} disabled={!configured}>
                 🔑 Zaloguj się
               </button>
             )
           )}
 
           <div className="sidebar-footer">
-            {configured ? 'Logowanie: Supabase' : '⚠️ Brak konfiguracji Supabase'}
-            <br />Dane treści: local// v0.2
+            {configured ? 'Dane: Supabase' : '⚠️ Brak konfiguracji Supabase'}
+            <br />v0.3
           </div>
         </div>
       </aside>
 
       <main className="main">
-        {active === 'materials' && (
-          <Materials onCount={onMaterials} isLoggedIn={!!user} onRequestLogin={() => setShowAuth(true)} />
-        )}
-        {active === 'quizzes' && (
-          <Quizzes onCount={onQuizzes} isLoggedIn={!!user} onRequestLogin={() => setShowAuth(true)} />
-        )}
-        {active === 'tips' && (
-          <Tips onCount={onTips} isLoggedIn={!!user} onRequestLogin={() => setShowAuth(true)} />
-        )}
-        {active === 'news' && (
-          <News onCount={onNews} isLoggedIn={!!user} onRequestLogin={() => setShowAuth(true)} />
-        )}
+        {active === 'panel' && <Dashboard onRequestLogin={requestLogin} onNavigate={setActive} />}
+        {active === 'materials' && <Materials onRequestLogin={requestLogin} />}
+        {active === 'quizzes' && <Quizzes onRequestLogin={requestLogin} />}
+        {active === 'tips' && <Tips onRequestLogin={requestLogin} />}
+        {active === 'news' && <News onRequestLogin={requestLogin} />}
       </main>
 
       {showAuth && <AuthPanel onClose={() => setShowAuth(false)} />}
