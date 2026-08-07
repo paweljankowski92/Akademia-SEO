@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react'
 import { useLocalStorage, uid } from '../lib/storage'
 import { seedQuizzes } from '../lib/seed'
-import { Modal, Field, EmptyState } from '../components/ui'
+import { Modal, Field, EmptyState, LockedBanner, LockOverlay } from '../components/ui'
 
-export default function Quizzes({ onCount }) {
+export default function Quizzes({ onCount, isLoggedIn = false, onRequestLogin }) {
   const [quizzes, setQuizzes] = useLocalStorage('sa_quizzes', seedQuizzes)
   const [editing, setEditing] = useState(null)
   const [playing, setPlaying] = useState(null)
 
   useEffect(() => { onCount?.(quizzes.length) }, [quizzes.length, onCount])
+
+  // Bez logowania dostępny jest tylko pierwszy quiz.
+  const freeId = quizzes[0]?.id
+  const isLocked = (quiz) => !isLoggedIn && quiz.id !== freeId
 
   function handleDelete(quiz) {
     if (!confirm(`Usunąć quiz „${quiz.title}”?`)) return
@@ -22,33 +26,52 @@ export default function Quizzes({ onCount }) {
           <h1 className="page-title">🧠 Quizy</h1>
           <p className="page-desc">Sprawdzaj wiedzę — twórz własne testy i rozwiązuj je.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setEditing(newQuiz())}>+ Nowy quiz</button>
+        {isLoggedIn && (
+          <button className="btn btn-primary" onClick={() => setEditing(newQuiz())}>+ Nowy quiz</button>
+        )}
       </div>
+
+      {!isLoggedIn && quizzes.length > 0 && (
+        <LockedBanner onRequestLogin={onRequestLogin} message="Bez logowania dostępny jest tylko pierwszy quiz." />
+      )}
 
       {quizzes.length === 0 ? (
         <EmptyState emoji="🧩" title="Brak quizów" text="Stwórz pierwszy test wiedzy."
-          action={<button className="btn btn-primary" onClick={() => setEditing(newQuiz())}>+ Nowy quiz</button>} />
+          action={isLoggedIn && <button className="btn btn-primary" onClick={() => setEditing(newQuiz())}>+ Nowy quiz</button>} />
       ) : (
         <div className="grid">
-          {quizzes.map((quiz) => (
-            <div className="card" key={quiz.id}>
-              <div className="card-top">
-                <h3 className="card-title">{quiz.title}</h3>
-                <div className="card-actions">
-                  <button className="btn-ghost btn-sm" onClick={() => setEditing(quiz)} title="Edytuj">✏️</button>
-                  <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(quiz)} title="Usuń">🗑️</button>
+          {quizzes.map((quiz) => {
+            const locked = isLocked(quiz)
+            return (
+              <div className={`card ${locked ? 'locked' : ''}`} key={quiz.id}>
+                <div className="card-top">
+                  <h3 className="card-title">{quiz.title}</h3>
+                  {locked ? (
+                    <span className="lock-badge" title="Dostępne po zalogowaniu">🔒</span>
+                  ) : (
+                    isLoggedIn && (
+                      <div className="card-actions">
+                        <button className="btn-ghost btn-sm" onClick={() => setEditing(quiz)} title="Edytuj">✏️</button>
+                        <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(quiz)} title="Usuń">🗑️</button>
+                      </div>
+                    )
+                  )}
+                </div>
+                {quiz.description && <p className={`card-body ${locked ? 'locked-blur' : ''}`}>{quiz.description}</p>}
+                <div className="card-footer">
+                  <span className="tag gray">{quiz.questions.length} pyt.</span>
+                  {locked ? (
+                    <LockOverlay onRequestLogin={onRequestLogin} />
+                  ) : (
+                    <button className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }}
+                      onClick={() => setPlaying(quiz)} disabled={quiz.questions.length === 0}>
+                      ▶ Rozwiąż
+                    </button>
+                  )}
                 </div>
               </div>
-              {quiz.description && <p className="card-body">{quiz.description}</p>}
-              <div className="card-footer">
-                <span className="tag gray">{quiz.questions.length} pyt.</span>
-                <button className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }}
-                  onClick={() => setPlaying(quiz)} disabled={quiz.questions.length === 0}>
-                  ▶ Rozwiąż
-                </button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

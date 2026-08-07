@@ -42,6 +42,30 @@ export function EmptyState({ emoji, title, text, action }) {
   )
 }
 
+export function LockedBanner({ onRequestLogin, message = 'Bez logowania dostępny jest tylko pierwszy element.' }) {
+  return (
+    <div className="alert alert-info" style={{ marginBottom: 18 }}>
+      🔒 {message}{' '}
+      <button
+        className="link-out"
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}
+        onClick={onRequestLogin}
+      >
+        Zaloguj się
+      </button>
+      , aby odblokować pełny dostęp.
+    </div>
+  )
+}
+
+export function LockOverlay({ onRequestLogin }) {
+  return (
+    <button className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }} onClick={onRequestLogin}>
+      🔓 Zaloguj się, aby odblokować
+    </button>
+  )
+}
+
 export function formatDate(iso) {
   if (!iso) return ''
   try {

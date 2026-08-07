@@ -8,13 +8,18 @@ const empty = {
   fileId: null, fileName: null,
 }
 
-export default function Materials({ onCount }) {
+export default function Materials({ onCount, isLoggedIn = false, onRequestLogin }) {
   const [items, setItems] = useLocalStorage('sa_materials', seedMaterials)
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState(null) // obiekt lub null
   const openFile = useOpenFile()
 
   useEffect(() => { onCount?.(items.length) }, [items.length, onCount])
+
+  // Bez logowania odblokowany jest tylko pierwszy materiał z pełnej listy.
+  // (Bazujemy na pełnej liście, żeby nie dało się odblokować przez wyszukiwarkę.)
+  const freeId = items[0]?.id
+  const isLocked = (item) => !isLoggedIn && item.id !== freeId
 
   const categories = useMemo(
     () => [...new Set(items.map((i) => i.category).filter(Boolean))],
@@ -43,8 +48,18 @@ export default function Materials({ onCount }) {
           <h1 className="page-title">📚 Materiały</h1>
           <p className="page-desc">Baza wewnętrznych materiałów szkoleniowych — pliki, linki i notatki.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setEditing(empty)}>+ Dodaj materiał</button>
+        {isLoggedIn && (
+          <button className="btn btn-primary" onClick={() => setEditing(empty)}>+ Dodaj materiał</button>
+        )}
       </div>
+
+      {!isLoggedIn && (
+        <div className="alert alert-info" style={{ marginBottom: 18 }}>
+          🔒 Bez logowania dostępny jest tylko pierwszy materiał.{' '}
+          <button className="link-out" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}
+            onClick={onRequestLogin}>Zaloguj się</button>, aby odblokować całą bazę.
+        </div>
+      )}
 
       <div className="toolbar">
         <input
@@ -60,35 +75,57 @@ export default function Materials({ onCount }) {
           emoji="📂"
           title={search ? 'Brak wyników' : 'Brak materiałów'}
           text={search ? 'Zmień frazę wyszukiwania.' : 'Dodaj pierwszy materiał szkoleniowy.'}
-          action={!search && <button className="btn btn-primary" onClick={() => setEditing(empty)}>+ Dodaj materiał</button>}
+          action={!search && isLoggedIn && <button className="btn btn-primary" onClick={() => setEditing(empty)}>+ Dodaj materiał</button>}
         />
       ) : (
         <div className="grid">
-          {filtered.map((item) => (
-            <div className="card" key={item.id}>
-              <div className="card-top">
-                <h3 className="card-title">{item.title}</h3>
-                <div className="card-actions">
-                  <button className="btn-ghost btn-sm" onClick={() => setEditing(item)} title="Edytuj">✏️</button>
-                  <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(item)} title="Usuń">🗑️</button>
+          {filtered.map((item) => {
+            const locked = isLocked(item)
+            return (
+              <div className={`card ${locked ? 'locked' : ''}`} key={item.id}>
+                <div className="card-top">
+                  <h3 className="card-title">{item.title}</h3>
+                  {locked ? (
+                    <span className="lock-badge" title="Dostępne po zalogowaniu">🔒</span>
+                  ) : (
+                    isLoggedIn && (
+                      <div className="card-actions">
+                        <button className="btn-ghost btn-sm" onClick={() => setEditing(item)} title="Edytuj">✏️</button>
+                        <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(item)} title="Usuń">🗑️</button>
+                      </div>
+                    )
+                  )}
+                </div>
+
+                {item.description && (
+                  <p className={`card-body ${locked ? 'locked-blur' : ''}`}>{item.description}</p>
+                )}
+
+                <div className="card-footer">
+                  {item.category && <span className="tag">{item.category}</span>}
+
+                  {locked ? (
+                    <button className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }} onClick={onRequestLogin}>
+                      🔓 Zaloguj się, aby odblokować
+                    </button>
+                  ) : (
+                    <>
+                      {item.kind === 'link' && item.url && (
+                        <a className="link-out" href={item.url} target="_blank" rel="noopener noreferrer">🔗 Otwórz link</a>
+                      )}
+                      {item.kind === 'file' && item.fileId && (
+                        <button className="link-out" onClick={() => openFile(item.fileId, item.fileName)}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                          📎 {item.fileName || 'Otwórz plik'}
+                        </button>
+                      )}
+                      <span className="meta" style={{ marginLeft: 'auto' }}>{formatDate(item.createdAt)}</span>
+                    </>
+                  )}
                 </div>
               </div>
-              {item.description && <p className="card-body">{item.description}</p>}
-              <div className="card-footer">
-                {item.category && <span className="tag">{item.category}</span>}
-                {item.kind === 'link' && item.url && (
-                  <a className="link-out" href={item.url} target="_blank" rel="noopener noreferrer">🔗 Otwórz link</a>
-                )}
-                {item.kind === 'file' && item.fileId && (
-                  <button className="link-out" onClick={() => openFile(item.fileId, item.fileName)}
-                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
-                    📎 {item.fileName || 'Otwórz plik'}
-                  </button>
-                )}
-                <span className="meta" style={{ marginLeft: 'auto' }}>{formatDate(item.createdAt)}</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

@@ -1,19 +1,23 @@
 import { useState, useEffect } from 'react'
 import { useLocalStorage, uid } from '../lib/storage'
 import { seedTips } from '../lib/seed'
-import { Modal, Field, EmptyState, formatDate } from '../components/ui'
+import { Modal, Field, EmptyState, formatDate, LockedBanner, LockOverlay } from '../components/ui'
 
 const META = {
   porada: { label: 'Porada', emoji: '💡' },
   ciekawostka: { label: 'Ciekawostka', emoji: '✨' },
 }
 
-export default function Tips({ onCount }) {
+export default function Tips({ onCount, isLoggedIn = false, onRequestLogin }) {
   const [items, setItems] = useLocalStorage('sa_tips', seedTips)
   const [editing, setEditing] = useState(null)
   const [filter, setFilter] = useState('all')
 
   useEffect(() => { onCount?.(items.length) }, [items.length, onCount])
+
+  // Bez logowania dostępny jest tylko pierwszy wpis z pełnej listy.
+  const freeId = items[0]?.id
+  const isLocked = (item) => !isLoggedIn && item.id !== freeId
 
   const shown = items.filter((i) => filter === 'all' || i.type === filter)
 
@@ -29,8 +33,14 @@ export default function Tips({ onCount }) {
           <h1 className="page-title">💡 Porady i ciekawostki</h1>
           <p className="page-desc">Krótkie tipy SEO i ciekawostki, które warto mieć pod ręką.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setEditing({ type: 'porada', text: '' })}>+ Dodaj wpis</button>
+        {isLoggedIn && (
+          <button className="btn btn-primary" onClick={() => setEditing({ type: 'porada', text: '' })}>+ Dodaj wpis</button>
+        )}
       </div>
+
+      {!isLoggedIn && items.length > 0 && (
+        <LockedBanner onRequestLogin={onRequestLogin} message="Bez logowania dostępny jest tylko pierwszy wpis." />
+      )}
 
       <div className="toolbar">
         {['all', 'porada', 'ciekawostka'].map((f) => (
@@ -42,22 +52,35 @@ export default function Tips({ onCount }) {
 
       {shown.length === 0 ? (
         <EmptyState emoji="💭" title="Brak wpisów" text="Dodaj pierwszą poradę lub ciekawostkę."
-          action={<button className="btn btn-primary" onClick={() => setEditing({ type: 'porada', text: '' })}>+ Dodaj wpis</button>} />
+          action={isLoggedIn && <button className="btn btn-primary" onClick={() => setEditing({ type: 'porada', text: '' })}>+ Dodaj wpis</button>} />
       ) : (
         <div className="grid">
-          {shown.map((item) => (
-            <div className="card" key={item.id}>
-              <div className="card-top">
-                <span className="tag">{META[item.type]?.emoji} {META[item.type]?.label}</span>
-                <div className="card-actions">
-                  <button className="btn-ghost btn-sm" onClick={() => setEditing(item)} title="Edytuj">✏️</button>
-                  <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(item)} title="Usuń">🗑️</button>
+          {shown.map((item) => {
+            const locked = isLocked(item)
+            return (
+              <div className={`card ${locked ? 'locked' : ''}`} key={item.id}>
+                <div className="card-top">
+                  <span className="tag">{META[item.type]?.emoji} {META[item.type]?.label}</span>
+                  {locked ? (
+                    <span className="lock-badge" title="Dostępne po zalogowaniu">🔒</span>
+                  ) : (
+                    isLoggedIn && (
+                      <div className="card-actions">
+                        <button className="btn-ghost btn-sm" onClick={() => setEditing(item)} title="Edytuj">✏️</button>
+                        <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(item)} title="Usuń">🗑️</button>
+                      </div>
+                    )
+                  )}
                 </div>
+                <p className={`card-body ${locked ? 'locked-blur' : ''}`} style={{ color: 'var(--text)', fontSize: 15 }}>{item.text}</p>
+                {locked ? (
+                  <div className="card-footer"><LockOverlay onRequestLogin={onRequestLogin} /></div>
+                ) : (
+                  <span className="meta">{formatDate(item.createdAt)}</span>
+                )}
               </div>
-              <p className="card-body" style={{ color: 'var(--text)', fontSize: 15 }}>{item.text}</p>
-              <span className="meta">{formatDate(item.createdAt)}</span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

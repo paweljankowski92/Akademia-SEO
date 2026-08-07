@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useLocalStorage, uid } from '../lib/storage'
 import { seedNews } from '../lib/seed'
-import { Modal, Field, EmptyState, formatDate } from '../components/ui'
+import { Modal, Field, EmptyState, formatDate, LockedBanner, LockOverlay } from '../components/ui'
 
-export default function News({ onCount }) {
+export default function News({ onCount, isLoggedIn = false, onRequestLogin }) {
   const [items, setItems] = useLocalStorage('sa_news', seedNews)
   const [editing, setEditing] = useState(null)
 
   useEffect(() => { onCount?.(items.length) }, [items.length, onCount])
 
   const sorted = [...items].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+  // Bez logowania dostępny jest tylko pierwszy (najnowszy) news.
+  const freeId = sorted[0]?.id
+  const isLocked = (item) => !isLoggedIn && item.id !== freeId
 
   function handleDelete(item) {
     if (!confirm(`Usunąć news „${item.title}”?`)) return
@@ -23,34 +27,51 @@ export default function News({ onCount }) {
           <h1 className="page-title">📰 News</h1>
           <p className="page-desc">Aktualności i nowinki ze świata SEO.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setEditing(emptyNews())}>+ Dodaj news</button>
+        {isLoggedIn && (
+          <button className="btn btn-primary" onClick={() => setEditing(emptyNews())}>+ Dodaj news</button>
+        )}
       </div>
+
+      {!isLoggedIn && sorted.length > 0 && (
+        <LockedBanner onRequestLogin={onRequestLogin} message="Bez logowania dostępny jest tylko pierwszy news." />
+      )}
 
       {sorted.length === 0 ? (
         <EmptyState emoji="🗞️" title="Brak newsów" text="Dodaj pierwszą aktualność."
-          action={<button className="btn btn-primary" onClick={() => setEditing(emptyNews())}>+ Dodaj news</button>} />
+          action={isLoggedIn && <button className="btn btn-primary" onClick={() => setEditing(emptyNews())}>+ Dodaj news</button>} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {sorted.map((item) => (
-            <div className="card" key={item.id}>
-              <div className="card-top">
-                <div>
-                  <h3 className="card-title">{item.title}</h3>
-                  <div className="meta" style={{ marginTop: 4 }}>
-                    📅 {formatDate(item.date)}{item.source && ` · ${item.source}`}
+          {sorted.map((item) => {
+            const locked = isLocked(item)
+            return (
+              <div className={`card ${locked ? 'locked' : ''}`} key={item.id}>
+                <div className="card-top">
+                  <div>
+                    <h3 className="card-title">{item.title}</h3>
+                    <div className="meta" style={{ marginTop: 4 }}>
+                      📅 {formatDate(item.date)}{item.source && ` · ${item.source}`}
+                    </div>
                   </div>
+                  {locked ? (
+                    <span className="lock-badge" title="Dostępne po zalogowaniu">🔒</span>
+                  ) : (
+                    isLoggedIn && (
+                      <div className="card-actions">
+                        <button className="btn-ghost btn-sm" onClick={() => setEditing(item)} title="Edytuj">✏️</button>
+                        <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(item)} title="Usuń">🗑️</button>
+                      </div>
+                    )
+                  )}
                 </div>
-                <div className="card-actions">
-                  <button className="btn-ghost btn-sm" onClick={() => setEditing(item)} title="Edytuj">✏️</button>
-                  <button className="btn-danger-ghost btn-sm" onClick={() => handleDelete(item)} title="Usuń">🗑️</button>
-                </div>
+                {item.body && <p className={`card-body ${locked ? 'locked-blur' : ''}`}>{item.body}</p>}
+                {locked ? (
+                  <div className="card-footer"><LockOverlay onRequestLogin={onRequestLogin} /></div>
+                ) : (
+                  item.url && <a className="link-out" href={item.url} target="_blank" rel="noopener noreferrer">🔗 Czytaj źródło</a>
+                )}
               </div>
-              {item.body && <p className="card-body">{item.body}</p>}
-              {item.url && (
-                <a className="link-out" href={item.url} target="_blank" rel="noopener noreferrer">🔗 Czytaj źródło</a>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

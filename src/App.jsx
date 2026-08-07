@@ -79,10 +79,18 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {active === 'materials' && <Materials onCount={onMaterials} />}
-        {active === 'quizzes' && <Quizzes onCount={onQuizzes} />}
-        {active === 'tips' && <Tips onCount={onTips} />}
-        {active === 'news' && <News onCount={onNews} />}
+        {active === 'materials' && (
+          <Materials onCount={onMaterials} isLoggedIn={!!user} onRequestLogin={() => setShowAuth(true)} />
+        )}
+        {active === 'quizzes' && (
+          <Quizzes onCount={onQuizzes} isLoggedIn={!!user} onRequestLogin={() => setShowAuth(true)} />
+        )}
+        {active === 'tips' && (
+          <Tips onCount={onTips} isLoggedIn={!!user} onRequestLogin={() => setShowAuth(true)} />
+        )}
+        {active === 'news' && (
+          <News onCount={onNews} isLoggedIn={!!user} onRequestLogin={() => setShowAuth(true)} />
+        )}
       </main>
 
       {showAuth && <AuthPanel onClose={() => setShowAuth(false)} />}
