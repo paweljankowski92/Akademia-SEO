@@ -3,6 +3,8 @@ import Materials from './sections/Materials'
 import Quizzes from './sections/Quizzes'
 import Tips from './sections/Tips'
 import News from './sections/News'
+import AuthPanel from './components/AuthPanel'
+import { useAuth } from './lib/auth'
 
 const NAV = [
   { key: 'materials', label: 'Materiały', icon: '📚' },
@@ -14,6 +16,8 @@ const NAV = [
 export default function App() {
   const [active, setActive] = useState('materials')
   const [counts, setCounts] = useState({})
+  const [showAuth, setShowAuth] = useState(false)
+  const { user, loading, configured, signOut } = useAuth()
 
   const setCount = useCallback((key, n) => {
     setCounts((c) => (c[key] === n ? c : { ...c, [key]: n }))
@@ -48,8 +52,29 @@ export default function App() {
           </button>
         ))}
 
-        <div className="sidebar-footer">
-          Dane zapisywane lokalnie w tej przeglądarce.<br />v0.1
+        <div style={{ marginTop: 'auto' }}>
+          {!loading && (
+            user ? (
+              <div className="user-box">
+                <div className="user-avatar">{(user.email || '?')[0].toUpperCase()}</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="user-email" title={user.email}>{user.email}</div>
+                  <div className="user-role">Zalogowany</div>
+                </div>
+                <button className="btn-ghost btn-sm" title="Wyloguj" onClick={() => signOut()}>⏻</button>
+              </div>
+            ) : (
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}
+                onClick={() => setShowAuth(true)} disabled={!configured}>
+                🔑 Zaloguj się
+              </button>
+            )
+          )}
+
+          <div className="sidebar-footer">
+            {configured ? 'Logowanie: Supabase' : '⚠️ Brak konfiguracji Supabase'}
+            <br />Dane treści: local// v0.2
+          </div>
         </div>
       </aside>
 
@@ -59,6 +84,8 @@ export default function App() {
         {active === 'tips' && <Tips onCount={onTips} />}
         {active === 'news' && <News onCount={onNews} />}
       </main>
+
+      {showAuth && <AuthPanel onClose={() => setShowAuth(false)} />}
     </div>
   )
 }

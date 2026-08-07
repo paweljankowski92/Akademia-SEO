@@ -255,6 +255,30 @@ input, textarea, select { font-family: inherit; }
 .quiz-result { text-align: center; padding: 24px; }
 .quiz-score { font-size: 42px; font-weight: 800; }
 
+/* ---------- Auth ---------- */
+.auth-tabs { display: flex; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 11px; margin-bottom: 4px; }
+.auth-tab {
+  flex: 1; border: none; background: transparent; color: var(--text-muted);
+  padding: 9px; border-radius: 8px; font-weight: 700; font-size: 14px;
+}
+.auth-tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.alert { border-radius: 10px; padding: 10px 12px; font-size: 13.5px; line-height: 1.5; }
+.alert-error { background: rgba(220,38,38,0.1); color: var(--danger); }
+.alert-info { background: var(--primary-soft); color: var(--primary); }
+
+.user-box {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 11px; background: var(--surface-2); margin-bottom: 6px;
+}
+.user-avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 14px;
+}
+.user-email { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-role { font-size: 11px; color: var(--text-muted); }
+
 .toolbar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
 .search { flex: 1; min-width: 200px; }
 
