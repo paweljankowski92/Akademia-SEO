@@ -34,7 +34,7 @@ function AdminPanel({ onNavigate }) {
       try {
         const [materials, quizzes, tips, news, profiles, progress] = await Promise.all([
           fetchAll('materials'), fetchAll('quizzes'), fetchAll('tips'),
-          fetchAll('news'), fetchAll('profiles'), fetchAll('progress'),
+          fetchAll('news'), fetchAll('profiles'), fetchAll('progress', { column: 'updated_at' }),
         ])
         setData({ materials, quizzes, tips, news, profiles, progress })
       } catch (e) {
