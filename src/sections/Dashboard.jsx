@@ -19,12 +19,13 @@ export default function Dashboard({ onRequestLogin, onNavigate }) {
   }
 
   return isAdmin
-    ? <AdminPanel />
+    ? <AdminPanel onNavigate={onNavigate} />
     : <StudentPanel email={profile?.email} onNavigate={onNavigate} />
 }
 
 /* ================= PANEL ADMINISTRATORA ================= */
-function AdminPanel() {
+function AdminPanel({ onNavigate }) {
+  const { user } = useAuth()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
 
@@ -53,6 +54,9 @@ function AdminPanel() {
     return Math.round(scored.reduce((a, r) => a + (r.score / r.max_score) * 100, 0) / scored.length)
   }
 
+  const quizTitles = Object.fromEntries(data.quizzes.map((q) => [q.id, q.title]))
+  const myProgress = data.progress.filter((r) => r.user_id === user?.id)
+
   return (
     <div>
       <div className="page-head">
@@ -70,6 +74,16 @@ function AdminPanel() {
         <Stat icon="📰" label="News" value={data.news.length} />
         <Stat icon="👥" label="Kursanci" value={students.length} />
       </div>
+
+      {/* Postępy administratora jako uczestnika */}
+      <MyProgress
+        heading="🎓 Twoje postępy"
+        progress={myProgress}
+        materialsTotal={data.materials.length}
+        quizzesTotal={data.quizzes.length}
+        quizTitles={quizTitles}
+        onNavigate={onNavigate}
+      />
 
       <h2 className="section-h">Postępy kursantów</h2>
       {students.length === 0 ? (
@@ -121,13 +135,6 @@ function StudentPanel({ email, onNavigate }) {
 
   if (!totals) return <Loading />
 
-  const doneMaterials = progress.filter((r) => r.kind === 'material').length
-  const quizRows = progress.filter((r) => r.kind === 'quiz')
-  const scored = quizRows.filter((r) => r.max_score)
-  const avgScore = scored.length
-    ? Math.round(scored.reduce((a, r) => a + (r.score / r.max_score) * 100, 0) / scored.length)
-    : null
-
   return (
     <div>
       <div className="page-head">
@@ -138,25 +145,49 @@ function StudentPanel({ email, onNavigate }) {
         <span className="tag">Kursant</span>
       </div>
 
+      <MyProgress
+        progress={progress}
+        materialsTotal={totals.materials}
+        quizzesTotal={totals.quizzes}
+        quizTitles={totals.quizTitles}
+        onNavigate={onNavigate}
+      />
+    </div>
+  )
+}
+
+/* ================= WSPÓLNA SEKCJA POSTĘPÓW ================= */
+function MyProgress({ heading, progress, materialsTotal, quizzesTotal, quizTitles, onNavigate }) {
+  const doneMaterials = progress.filter((r) => r.kind === 'material').length
+  const quizRows = progress.filter((r) => r.kind === 'quiz')
+  const scored = quizRows.filter((r) => r.max_score)
+  const avgScore = scored.length
+    ? Math.round(scored.reduce((a, r) => a + (r.score / r.max_score) * 100, 0) / scored.length)
+    : null
+
+  return (
+    <>
+      {heading && <h2 className="section-h">{heading}</h2>}
+
       <div className="stat-grid">
-        <ProgressStat icon="📚" label="Ukończone materiały" done={doneMaterials} total={totals.materials} />
-        <ProgressStat icon="🧠" label="Rozwiązane quizy" done={quizRows.length} total={totals.quizzes} />
+        <ProgressStat icon="📚" label="Ukończone materiały" done={doneMaterials} total={materialsTotal} />
+        <ProgressStat icon="🧠" label="Rozwiązane quizy" done={quizRows.length} total={quizzesTotal} />
         <Stat icon="🏅" label="Średni wynik quizów" value={avgScore == null ? '—' : `${avgScore}%`} />
       </div>
 
-      <h2 className="section-h">Twoje wyniki quizów</h2>
+      <h3 className="section-h" style={{ fontSize: 15 }}>Twoje wyniki quizów</h3>
       {quizRows.length === 0 ? (
         <EmptyState emoji="🧩" title="Brak rozwiązanych quizów"
           text="Rozwiąż pierwszy quiz, aby zobaczyć tu swój wynik."
           action={<button className="btn btn-primary" onClick={() => onNavigate?.('quizzes')}>Przejdź do quizów</button>} />
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" style={{ marginBottom: 30 }}>
           <table className="table">
             <thead><tr><th>Quiz</th><th>Wynik</th><th>Procent</th></tr></thead>
             <tbody>
               {quizRows.map((r) => (
                 <tr key={r.id}>
-                  <td>{totals.quizTitles[r.item_id] || '(usunięty quiz)'}</td>
+                  <td>{quizTitles[r.item_id] || '(usunięty quiz)'}</td>
                   <td>{r.score} / {r.max_score}</td>
                   <td>{r.max_score ? `${Math.round((r.score / r.max_score) * 100)}%` : '—'}</td>
                 </tr>
@@ -165,7 +196,7 @@ function StudentPanel({ email, onNavigate }) {
           </table>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
